@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <title>Projeto Viva com Saúde</title>
+    <script>
+      // Single Page Apps for GitHub Pages
+      // https://github.com/rafgraph/spa-github-pages
+      (function() {
+        var l = window.location;
+        var pathSegmentsToKeep = (l.hostname.endsWith('.github.io') && l.pathname.split('/')[1]) ? 1 : 0;
+        var repo = l.pathname.split('/').slice(0, 1 + pathSegmentsToKeep).join('/');
+        var path = l.pathname.slice(1).split('/').slice(pathSegmentsToKeep).join('/').replace(/&/g, '~and~');
+        var query = l.search ? '&' + l.search.slice(1).replace(/&/g, '~and~') : '';
+        l.replace(
+          l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+          repo + '/?/' + path + query + l.hash
+        );
+      })();
+    </script>
+  </head>
+  <body>
+    <div style="font-family: sans-serif; text-align: center; padding: 40px; color: #444;">
+      <h2>Carregando página...</h2>
+    </div>
+  </body>
+</html>
