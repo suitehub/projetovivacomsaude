@@ -1,0 +1,6 @@
+{
+  "name": "Projeto Viva com Saúde",
+  "description": "E-commerce de produtos naturais e fitoterápicos da marca Projeto Viva com Saúde com vitrine de produtos, categorias, carrinho interativo e design responsivo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
