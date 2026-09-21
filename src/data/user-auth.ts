@@ -124,6 +124,28 @@ export async function syncUserProfileToFirestore(profile: UserProfile): Promise<
     } else {
       await setDoc(userDocRef, dataToSave);
     }
+
+    // Also sync to /customers collection so the user appears in the admin panel
+    try {
+      const customerDocRef = doc(db, "customers", profile.id);
+      await setDoc(
+        customerDocRef,
+        {
+          id: profile.id,
+          fullName: profile.fullName || "Cliente",
+          email: profile.email,
+          phone: profile.phone || "",
+          city: profile.city || "São Paulo",
+          state: profile.state || "SP",
+          address: profile.address || "",
+          registered: true,
+          registrationDate: new Date().toLocaleDateString("pt-BR"),
+        },
+        { merge: true },
+      );
+    } catch {
+      // Non-blocking
+    }
   } catch (error) {
     try {
       handleFirestoreError(error, OperationType.WRITE, path);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import {
   DollarSign,
@@ -12,28 +12,41 @@ import {
   SlidersHorizontal,
   X,
   Zap,
+  Cloud,
+  Trash2,
 } from "lucide-react";
-
-interface AbandonedCartItem {
-  id: string;
-  cartNumber: string;
-  date: string;
-  total: string;
-  customer: string;
-  email: string;
-  hasPaymentAttempt: boolean;
-  actionStatus: string;
-  products: { name: string; quantity: number; price: string }[];
-}
-
-const INITIAL_CARTS: AbandonedCartItem[] = [];
+import {
+  AbandonedCartItem,
+  getCachedAbandonedCarts,
+  subscribeAbandonedCarts,
+  deleteAbandonedCartFromFirestore,
+} from "@/data/admin-orders-data";
 
 export function AbandonedCarts() {
-  const [carts] = useState<AbandonedCartItem[]>(INITIAL_CARTS);
+  const [carts, setCarts] = useState<AbandonedCartItem[]>(() => getCachedAbandonedCarts());
+
+  useEffect(() => {
+    const unsubscribe = subscribeAbandonedCarts((loaded) => {
+      setCarts(loaded);
+    });
+    return () => unsubscribe();
+  }, []);
+
   const [searchEmail, setSearchEmail] = useState("");
   const [showOpportunityBanner, setShowOpportunityBanner] = useState(true);
   const [selectedCart, setSelectedCart] = useState<AbandonedCartItem | null>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
+
+  const handleDeleteCart = (cartId: string) => {
+    deleteAbandonedCartFromFirestore(cartId)
+      .then(() => {
+        toast.success("Carrinho removido do Firestore com sucesso!");
+        if (selectedCart && selectedCart.id === cartId) {
+          setSelectedCart(null);
+        }
+      })
+      .catch(() => toast.error("Erro ao remover carrinho do Firestore."));
+  };
 
   const filteredCarts = carts.filter(
     (c) =>
@@ -46,9 +59,15 @@ export function AbandonedCarts() {
     <div className="space-y-4">
       {/* Top Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-gray-900 tracking-tight sm:text-3xl">
-          Carrinhos abandonados
-        </h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight sm:text-3xl">
+            Carrinhos abandonados
+          </h1>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+            Firestore Ativo
+          </span>
+        </div>
 
         <div className="flex items-center gap-2">
           {/* Exportar */}
@@ -303,26 +322,40 @@ export function AbandonedCarts() {
               </div>
             </div>
 
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedCart(null)}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Fechar
-              </button>
+            <div className="mt-5 flex items-center justify-between border-t border-gray-100 pt-3">
               <button
                 type="button"
                 onClick={() => {
-                  toast.success(
-                    `E-mail de recuperação reenviado com sucesso para ${selectedCart.email}!`,
-                  );
-                  setSelectedCart(null);
+                  if (confirm("Deseja realmente remover este carrinho abandonado do Firestore?")) {
+                    handleDeleteCart(selectedCart.id);
+                  }
                 }}
-                className="rounded-md bg-[#0066d6] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0052b3]"
+                className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700"
               >
-                Reenviar e-mail de recuperação
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Excluir</span>
               </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCart(null)}
+                  className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    toast.success(
+                      `E-mail de recuperação reenviado com sucesso para ${selectedCart.email}!`,
+                    );
+                    setSelectedCart(null);
+                  }}
+                  className="rounded-md bg-[#0066d6] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[#0052b3]"
+                >
+                  Reenviar e-mail de recuperação
+                </button>
+              </div>
             </div>
           </div>
         </div>

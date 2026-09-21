@@ -15,8 +15,17 @@ import {
   AlertCircle,
   Truck,
   Check,
+  Cloud,
 } from "lucide-react";
-import { DiscountCoupon, getAdminCoupons, saveAdminCoupons } from "@/data/admin-discounts-data";
+import {
+  DiscountCoupon,
+  getAdminCoupons,
+  saveAdminCoupons,
+  subscribeAdminCoupons,
+  saveAdminCouponToFirestore,
+  deleteAdminCouponFromFirestore,
+  toggleAdminCouponActiveInFirestore,
+} from "@/data/admin-discounts-data";
 import { CouponEditor } from "./coupon-editor";
 
 export function DiscountsList() {
@@ -34,13 +43,12 @@ export function DiscountsList() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
 
-  // Sync listener
+  // Firestore Real-time listener
   useEffect(() => {
-    const handleUpdate = () => {
-      setCoupons(getAdminCoupons());
-    };
-    window.addEventListener("viva_admin_coupons_updated", handleUpdate);
-    return () => window.removeEventListener("viva_admin_coupons_updated", handleUpdate);
+    const unsubscribe = subscribeAdminCoupons((loaded) => {
+      setCoupons(loaded);
+    });
+    return () => unsubscribe();
   }, []);
 
   const showNotification = (msg: string) => {
@@ -55,29 +63,34 @@ export function DiscountsList() {
   };
 
   const handleToggleActive = (id: string) => {
-    const updated = coupons.map((c) => {
-      if (c.id === id) {
-        const nextState = !c.active;
+    const target = coupons.find((c) => c.id === id);
+    if (!target) return;
+    const nextState = !target.active;
+
+    const updated = coupons.map((c) => (c.id === id ? { ...c, active: nextState } : c));
+    setCoupons(updated);
+    toggleAdminCouponActiveInFirestore(id, nextState)
+      .then(() => {
         showNotification(
           nextState
-            ? `Cupom ${c.code} ativado com sucesso!`
-            : `Cupom ${c.code} pausado com sucesso.`,
+            ? `Cupom ${target.code} ativado no Firestore!`
+            : `Cupom ${target.code} pausado no Firestore.`,
         );
-        return { ...c, active: nextState };
-      }
-      return c;
-    });
-    setCoupons(updated);
-    saveAdminCoupons(updated);
+      })
+      .catch((err) => {
+        console.error("Erro ao atualizar status do cupom:", err);
+        showNotification("Erro ao atualizar cupom no Firestore.");
+      });
   };
 
   const handleDelete = (id: string) => {
     const updated = coupons.filter((c) => c.id !== id);
     setCoupons(updated);
-    saveAdminCoupons(updated);
     setSelectedIds((prev) => prev.filter((item) => item !== id));
     setDeleteConfirmId(null);
-    showNotification("Cupom excluído com sucesso.");
+    deleteAdminCouponFromFirestore(id)
+      .then(() => showNotification("Cupom excluído do Firestore com sucesso."))
+      .catch(() => showNotification("Erro ao excluir cupom do Firestore."));
   };
 
   const handleDuplicate = (coupon: DiscountCoupon) => {
@@ -91,8 +104,9 @@ export function DiscountsList() {
     };
     const updated = [duplicate, ...coupons];
     setCoupons(updated);
-    saveAdminCoupons(updated);
-    showNotification(`Cupom ${duplicate.code} duplicado com sucesso!`);
+    saveAdminCouponToFirestore(duplicate)
+      .then(() => showNotification(`Cupom ${duplicate.code} duplicado e salvo no Firestore!`))
+      .catch(() => showNotification("Erro ao salvar cupom no Firestore."));
     setActiveDropdownId(null);
   };
 
@@ -101,13 +115,15 @@ export function DiscountsList() {
     let updated: DiscountCoupon[];
     if (exists) {
       updated = coupons.map((c) => (c.id === saved.id ? saved : c));
-      showNotification(`Cupom ${saved.code} atualizado com sucesso!`);
+      showNotification(`Cupom ${saved.code} atualizado no Firestore!`);
     } else {
       updated = [saved, ...coupons];
-      showNotification(`Cupom ${saved.code} criado com sucesso!`);
+      showNotification(`Cupom ${saved.code} criado e salvo no Firestore!`);
     }
     setCoupons(updated);
-    saveAdminCoupons(updated);
+    saveAdminCouponToFirestore(saved).catch((err) => {
+      console.error("Erro ao salvar cupom no Firestore:", err);
+    });
     setView("list");
     setEditingCoupon(null);
   };
@@ -152,20 +168,28 @@ export function DiscountsList() {
   };
 
   const handleBulkToggle = (active: boolean) => {
+    const idsToUpdate = [...selectedIds];
     const updated = coupons.map((c) => (selectedIds.includes(c.id) ? { ...c, active } : c));
     setCoupons(updated);
-    saveAdminCoupons(updated);
-    showNotification(
-      `${selectedIds.length} cupom(ns) ${active ? "ativados" : "pausados"} com sucesso.`,
-    );
+    Promise.all(idsToUpdate.map((id) => toggleAdminCouponActiveInFirestore(id, active)))
+      .then(() => {
+        showNotification(
+          `${idsToUpdate.length} cupom(ns) ${active ? "ativados" : "pausados"} no Firestore.`,
+        );
+      })
+      .catch(() => showNotification("Erro ao atualizar cupons no Firestore."));
     setSelectedIds([]);
   };
 
   const handleBulkDelete = () => {
+    const idsToDelete = [...selectedIds];
     const updated = coupons.filter((c) => !selectedIds.includes(c.id));
     setCoupons(updated);
-    saveAdminCoupons(updated);
-    showNotification(`${selectedIds.length} cupom(ns) excluídos.`);
+    Promise.all(idsToDelete.map((id) => deleteAdminCouponFromFirestore(id)))
+      .then(() => {
+        showNotification(`${idsToDelete.length} cupom(ns) excluídos do Firestore.`);
+      })
+      .catch(() => showNotification("Erro ao excluir cupons do Firestore."));
     setSelectedIds([]);
   };
 
@@ -218,10 +242,14 @@ export function DiscountsList() {
 
       {/* Top Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
             Cupons de desconto
           </h1>
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <Cloud className="w-3 h-3 text-emerald-600" />
+            Firestore
+          </span>
           <span className="text-xs font-medium text-gray-500">{activeCount} ativos</span>
         </div>
 

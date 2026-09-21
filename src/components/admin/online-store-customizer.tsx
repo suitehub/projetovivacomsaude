@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import {
   AlertCircle,
@@ -21,11 +21,13 @@ import {
   CreditCard,
   Leaf,
   Upload,
+  Cloud,
 } from "lucide-react";
 import {
   DEFAULT_STORE_SETTINGS,
   getStoreSettings,
   saveStoreSettings,
+  subscribeStoreSettings,
   StoreSettings,
 } from "@/data/store-settings";
 import heroImageDefault from "@/assets/hero.png";
@@ -33,6 +35,13 @@ import heroImageDefault from "@/assets/hero.png";
 export function OnlineStoreCustomizer() {
   const [settings, setSettings] = useState<StoreSettings>(() => getStoreSettings());
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = subscribeStoreSettings((loaded) => {
+      setSettings(loaded);
+    });
+    return () => unsubscribe();
+  }, []);
   const [activeSection, setActiveSection] = useState<"contato" | "banner" | "vantagens" | "geral">(
     "contato",
   );
@@ -114,6 +123,10 @@ export function OnlineStoreCustomizer() {
                 <h1 className="text-xl font-bold text-gray-900">Loja Online</h1>
                 <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
                   Canal Ativo
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-[#0066d6] border border-blue-200">
+                  <Cloud className="w-3 h-3 text-[#0066d6]" />
+                  Firestore Sincronizado
                 </span>
               </div>
               <p className="text-xs text-gray-500 mt-0.5">

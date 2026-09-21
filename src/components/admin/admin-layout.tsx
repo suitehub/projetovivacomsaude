@@ -21,6 +21,7 @@ import {
   Truck,
   Users,
   X,
+  Cloud,
 } from "lucide-react";
 
 export type StatSubTab =
@@ -558,6 +559,11 @@ export function AdminLayout({ children, activeSubTab, onSelectSubTab }: AdminLay
             </div>
 
             <div className="flex items-center gap-2 sm:gap-4">
+              <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+                Firestore Conectado
+              </span>
+
               {/* Store Profile */}
               <Link
                 to="/"

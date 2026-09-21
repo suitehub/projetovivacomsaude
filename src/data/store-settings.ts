@@ -1,3 +1,7 @@
+import { doc, setDoc, onSnapshot } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { cleanFirestorePayload } from "@/lib/firestore-utils";
+
 export interface StoreSettings {
   // Contato & Localização
   whatsappNumber: string; // ex: "5511950300241"
@@ -89,6 +93,9 @@ export function getStoreSettings(): StoreSettings {
   return DEFAULT_STORE_SETTINGS;
 }
 
+/**
+ * Salva localmente e persiste no Firestore doc /settings/store
+ */
 export function saveStoreSettings(settings: StoreSettings): void {
   if (typeof window === "undefined") return;
   try {
@@ -97,4 +104,53 @@ export function saveStoreSettings(settings: StoreSettings): void {
   } catch {
     // fallback
   }
+
+  // Persiste no Firestore
+  saveStoreSettingsToFirestore(settings).catch((err) => {
+    console.warn("Aviso ao salvar configurações no Firestore:", err);
+  });
+}
+
+/**
+ * Salva configurações da loja no Firestore
+ */
+export async function saveStoreSettingsToFirestore(settings: StoreSettings): Promise<void> {
+  const docRef = doc(db, "settings", "store");
+  const payload = cleanFirestorePayload({
+    ...settings,
+    updatedAt: new Date().toISOString(),
+  });
+  await setDoc(docRef, payload, { merge: true });
+}
+
+/**
+ * Escuta configurações da loja em tempo real do Firestore
+ */
+export function subscribeStoreSettings(callback: (settings: StoreSettings) => void): () => void {
+  const docRef = doc(db, "settings", "store");
+
+  const unsubscribe = onSnapshot(
+    docRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as Partial<StoreSettings>;
+        const merged: StoreSettings = { ...DEFAULT_STORE_SETTINGS, ...data };
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          window.dispatchEvent(new Event("viva_store_settings_updated"));
+        } catch {
+          // ignore
+        }
+        callback(merged);
+      } else {
+        callback(getStoreSettings());
+      }
+    },
+    (err) => {
+      console.warn("Aviso ao sincronizar configurações do Firestore, usando local:", err);
+      callback(getStoreSettings());
+    },
+  );
+
+  return unsubscribe;
 }

@@ -76,9 +76,387 @@
       },
       "required": ["productId", "userId", "addedAt"]
     },
+    "AdminProduct": {
+      "title": "Store Product",
+      "description": "Store product catalog item managed by administrators",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique product identifier or SKU slug",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "Product commercial name",
+          "maxLength": 180
+        },
+        "urlSlug": {
+          "type": "string",
+          "description": "URL slug identifier for product route",
+          "maxLength": 180
+        },
+        "categories": {
+          "type": "string",
+          "description": "Categories comma-separated list",
+          "maxLength": 200
+        },
+        "price": {
+          "type": "number",
+          "description": "Regular selling price in BRL"
+        },
+        "promotionalPrice": {
+          "type": "number",
+          "description": "Promotional or discount price in BRL"
+        },
+        "stock": {
+          "type": "string",
+          "description": "Current stock count or 'Infinito'",
+          "maxLength": 40
+        },
+        "sku": {
+          "type": "string",
+          "description": "Stock keeping unit code",
+          "maxLength": 60
+        },
+        "barcode": {
+          "type": "string",
+          "description": "EAN or GTIN barcode",
+          "maxLength": 60
+        },
+        "displayInStore": {
+          "type": "boolean",
+          "description": "Whether the product is enabled for storefront display"
+        },
+        "freeShipping": {
+          "type": "boolean",
+          "description": "Indicates free shipping eligibility"
+        },
+        "description": {
+          "type": "string",
+          "description": "Full product description and benefits",
+          "maxLength": 5000
+        },
+        "tags": {
+          "type": "string",
+          "description": "Search and filter keywords",
+          "maxLength": 300
+        },
+        "brand": {
+          "type": "string",
+          "description": "Manufacturer or brand name",
+          "maxLength": 80
+        },
+        "visibility": {
+          "type": "string",
+          "description": "Catalog visibility status",
+          "enum": ["Visível", "Não listado", "Oculto"]
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Main cover image URL",
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp",
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update timestamp",
+          "maxLength": 40
+        }
+      },
+      "required": ["id", "name", "price"]
+    },
+    "DiscountCoupon": {
+      "title": "Discount Coupon",
+      "description": "Promotional discount voucher code",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique coupon identifier",
+          "maxLength": 64
+        },
+        "code": {
+          "type": "string",
+          "description": "Promotional voucher code (e.g., SAUDE10)",
+          "maxLength": 40
+        },
+        "type": {
+          "type": "string",
+          "description": "Calculation strategy",
+          "enum": ["porcentagem", "valor_fixo", "frete_gratis"]
+        },
+        "value": {
+          "type": "number",
+          "description": "Percentage discount or monetary discount amount"
+        },
+        "includeShippingInDiscount": {
+          "type": "boolean",
+          "description": "Whether discount applies to shipping fee"
+        },
+        "appliesTo": {
+          "type": "string",
+          "description": "Target scope",
+          "enum": ["toda_loja", "categorias", "produtos"]
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Current coupon availability status"
+        },
+        "usedCount": {
+          "type": "number",
+          "description": "Total times coupon was redeemed"
+        },
+        "minCartValue": {
+          "type": "number",
+          "description": "Minimum subtotal required to redeem coupon"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when coupon was created",
+          "maxLength": 40
+        }
+      },
+      "required": ["id", "code", "type", "value", "active"]
+    },
+    "CustomerItem": {
+      "title": "Customer",
+      "description": "Registered customer or buyer in the store database",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Customer identifier",
+          "maxLength": 128
+        },
+        "fullName": {
+          "type": "string",
+          "description": "Customer full legal or commercial name",
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "description": "Contact email address",
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "description": "Customer contact phone or WhatsApp",
+          "maxLength": 30
+        },
+        "cpfCnpj": {
+          "type": "string",
+          "description": "Brazilian tax identifier",
+          "maxLength": 30
+        },
+        "city": {
+          "type": "string",
+          "description": "City of residence",
+          "maxLength": 80
+        },
+        "state": {
+          "type": "string",
+          "description": "State / Federative Unit",
+          "maxLength": 40
+        },
+        "totalSpent": {
+          "type": "number",
+          "description": "Lifetime amount spent in BRL"
+        },
+        "purchasesCount": {
+          "type": "number",
+          "description": "Total completed orders count"
+        },
+        "registered": {
+          "type": "boolean",
+          "description": "Account registration state"
+        },
+        "marketing": {
+          "type": "string",
+          "description": "Marketing consent status",
+          "enum": ["Aceita", "Não aceita"]
+        },
+        "registrationDate": {
+          "type": "string",
+          "description": "Date of initial contact or registration",
+          "maxLength": 40
+        }
+      },
+      "required": ["id", "fullName", "email"]
+    },
+    "CustomerMessage": {
+      "title": "Customer Message",
+      "description": "Inquiry or contact message sent to the store",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Message identifier",
+          "maxLength": 64
+        },
+        "senderName": {
+          "type": "string",
+          "description": "Sender name",
+          "maxLength": 120
+        },
+        "senderEmail": {
+          "type": "string",
+          "description": "Sender contact email",
+          "maxLength": 120
+        },
+        "senderPhone": {
+          "type": "string",
+          "description": "Sender phone number",
+          "maxLength": 30
+        },
+        "type": {
+          "type": "string",
+          "description": "Category of message",
+          "maxLength": 50
+        },
+        "content": {
+          "type": "string",
+          "description": "Message body text",
+          "maxLength": 2000
+        },
+        "date": {
+          "type": "string",
+          "description": "Sent timestamp",
+          "maxLength": 40
+        },
+        "status": {
+          "type": "string",
+          "description": "Response status",
+          "enum": ["Não respondida", "Respondida"]
+        },
+        "replyContent": {
+          "type": "string",
+          "description": "Admin reply text",
+          "maxLength": 2000
+        }
+      },
+      "required": ["id", "senderName", "senderEmail", "content", "status"]
+    },
+    "SaleOrder": {
+      "title": "Sale Order",
+      "description": "Store sale or checkout transaction record",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique order identifier",
+          "maxLength": 64
+        },
+        "orderNumber": {
+          "type": "string",
+          "description": "Sequential order number",
+          "maxLength": 30
+        },
+        "date": {
+          "type": "string",
+          "description": "Order creation timestamp",
+          "maxLength": 40
+        },
+        "customer": {
+          "type": "string",
+          "description": "Customer name",
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "description": "Customer contact email",
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "description": "Customer contact phone",
+          "maxLength": 30
+        },
+        "total": {
+          "type": "number",
+          "description": "Total order amount in BRL"
+        },
+        "itemsCount": {
+          "type": "number",
+          "description": "Total items count"
+        },
+        "paymentStatus": {
+          "type": "string",
+          "description": "Payment verification state",
+          "enum": ["Recebido", "Recusado", "Pendente"]
+        },
+        "shippingStatus": {
+          "type": "string",
+          "description": "Shipping status",
+          "enum": ["Enviada", "Pendente", "Cancelada"]
+        },
+        "trackingCode": {
+          "type": "string",
+          "description": "Postal carrier tracking code",
+          "maxLength": 60
+        },
+        "statusFilter": {
+          "type": "string",
+          "description": "Operational fulfillment queue",
+          "enum": ["arquivar", "cobrar", "embalar", "enviar", "retirar"]
+        }
+      },
+      "required": ["id", "orderNumber", "total", "customer"]
+    },
+    "AbandonedCart": {
+      "title": "Abandoned Cart",
+      "description": "Cart session not completed by customer",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Cart identifier",
+          "maxLength": 64
+        },
+        "cartNumber": {
+          "type": "string",
+          "description": "Human readable cart code",
+          "maxLength": 30
+        },
+        "date": {
+          "type": "string",
+          "description": "Abandonment timestamp",
+          "maxLength": 40
+        },
+        "total": {
+          "type": "string",
+          "description": "Formatted total value",
+          "maxLength": 30
+        },
+        "customer": {
+          "type": "string",
+          "description": "Customer name or identification",
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "description": "Customer recovery email",
+          "maxLength": 120
+        },
+        "hasPaymentAttempt": {
+          "type": "boolean",
+          "description": "Whether customer reached checkout payment"
+        },
+        "actionStatus": {
+          "type": "string",
+          "description": "Recovery action status",
+          "maxLength": 60
+        }
+      },
+      "required": ["id", "cartNumber", "total", "customer", "email"]
+    },
     "StoreSettings": {
       "title": "Store Settings",
-      "description": "Global store settings and contact configuration",
+      "description": "Global store settings, contact details, and banner configuration",
       "type": "object",
       "properties": {
         "storeName": {
@@ -96,20 +474,10 @@
           "description": "WhatsApp customer support phone number",
           "maxLength": 30
         },
-        "supportEmail": {
+        "contactEmail": {
           "type": "string",
           "description": "Support and customer service email",
           "maxLength": 100
-        },
-        "topAnnouncement": {
-          "type": "string",
-          "description": "Header promotion or announcement banner message",
-          "maxLength": 250
-        },
-        "locationDisplay": {
-          "type": "string",
-          "description": "City and physical presence summary",
-          "maxLength": 120
         },
         "updatedAt": {
           "type": "string",
@@ -170,7 +538,31 @@
       "schema": "UserFavorite",
       "description": "Stores bookmarked favorite products owned by the specific user"
     },
-    "/settings/store": {
+    "/products/{productId}": {
+      "schema": "AdminProduct",
+      "description": "Store products catalog readable by all, managed by admins"
+    },
+    "/coupons/{couponId}": {
+      "schema": "DiscountCoupon",
+      "description": "Promotional discount vouchers readable by store, managed by admins"
+    },
+    "/customers/{customerId}": {
+      "schema": "CustomerItem",
+      "description": "Customer database records accessible to administrators"
+    },
+    "/messages/{messageId}": {
+      "schema": "CustomerMessage",
+      "description": "Customer contact and support messages submitted by visitors, managed by admins"
+    },
+    "/orders/{orderId}": {
+      "schema": "SaleOrder",
+      "description": "Orders created by checkouts, managed by administrators"
+    },
+    "/abandoned_carts/{cartId}": {
+      "schema": "AbandonedCart",
+      "description": "Abandoned cart records tracked for store recovery"
+    },
+    "/settings/{settingId}": {
       "schema": "StoreSettings",
       "description": "Global store settings read by all customers, writable by admins"
     },

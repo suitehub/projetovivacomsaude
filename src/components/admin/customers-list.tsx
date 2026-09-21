@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { toast } from "sonner";
 import {
   ArrowUpDown,
@@ -17,8 +17,16 @@ import {
   User,
   UserPlus,
   X,
+  Cloud,
 } from "lucide-react";
-import { AdminCustomerItem, INITIAL_ADMIN_CUSTOMERS } from "@/data/admin-customers-data";
+import {
+  AdminCustomerItem,
+  getCachedAdminCustomers,
+  subscribeAdminCustomers,
+  saveAdminCustomerToFirestore,
+  deleteAdminCustomerFromFirestore,
+  saveAllAdminCustomersToFirestore,
+} from "@/data/admin-customers-data";
 import { exportToCustomersCsv, parseCustomersCsv } from "@/lib/nuvemshop-customers-csv";
 import { CustomerDetail } from "@/components/admin/customer-detail";
 
@@ -27,28 +35,14 @@ interface CustomersListProps {
 }
 
 export function CustomersList({ onSelectCustomer }: CustomersListProps) {
-  const [customers, setCustomers] = useState<AdminCustomerItem[]>(() => {
-    try {
-      const saved = localStorage.getItem("viva_admin_customers");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          if (
-            parsed.some(
-              (c: AdminCustomerItem) => c.email === "carlos.leite@email.com" || c.id === "cust-1",
-            )
-          ) {
-            localStorage.setItem("viva_admin_customers", JSON.stringify([]));
-            return [];
-          }
-          return parsed;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return INITIAL_ADMIN_CUSTOMERS;
-  });
+  const [customers, setCustomers] = useState<AdminCustomerItem[]>(() => getCachedAdminCustomers());
+
+  useEffect(() => {
+    const unsubscribe = subscribeAdminCustomers((loaded) => {
+      setCustomers(loaded);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -75,11 +69,6 @@ export function CustomersList({ onSelectCustomer }: CustomersListProps) {
 
   const saveCustomers = (updated: AdminCustomerItem[]) => {
     setCustomers(updated);
-    try {
-      localStorage.setItem("viva_admin_customers", JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
   };
 
   // CSV Export
@@ -123,14 +112,21 @@ export function CustomersList({ onSelectCustomer }: CustomersListProps) {
         }
 
         const merged = Array.from(existingMap.values());
-        saveCustomers(merged);
-        setImportStatusMessage(
-          `Sucesso! ${imported.length} clientes importados/atualizados com êxito.`,
-        );
-        setTimeout(() => {
-          setImportStatusMessage(null);
-          setShowExportImportModal(false);
-        }, 2500);
+        setCustomers(merged);
+        saveAllAdminCustomersToFirestore(merged)
+          .then(() => {
+            setImportStatusMessage(
+              `Sucesso! ${imported.length} clientes importados e salvos no Firestore com êxito.`,
+            );
+            setTimeout(() => {
+              setImportStatusMessage(null);
+              setShowExportImportModal(false);
+            }, 2500);
+          })
+          .catch((err) => {
+            console.error("Erro ao salvar clientes no Firestore:", err);
+            setImportStatusMessage("Erro ao sincronizar clientes com o Firestore.");
+          });
       } catch {
         setImportStatusMessage(
           "Erro ao processar o arquivo. Verifique se o formato coincide com o modelo Nuvemshop.",
@@ -183,9 +179,15 @@ export function CustomersList({ onSelectCustomer }: CustomersListProps) {
     };
 
     const updated = [created, ...customers];
-    saveCustomers(updated);
+    setCustomers(updated);
     setShowAddModal(false);
-    toast.success("Cliente cadastrado com sucesso!");
+    saveAdminCustomerToFirestore(created)
+      .then(() => toast.success("Cliente cadastrado e salvo no Firestore!"))
+      .catch((err) => {
+        console.error("Erro ao salvar cliente no Firestore:", err);
+        toast.error("Erro ao salvar cliente no Firestore.");
+      });
+
     setNewCustomerData({
       fullName: "",
       email: "",
@@ -202,8 +204,10 @@ export function CustomersList({ onSelectCustomer }: CustomersListProps) {
   // Delete customer
   const handleDeleteCustomer = (id: string) => {
     const updated = customers.filter((c) => c.id !== id);
-    saveCustomers(updated);
-    toast.success("Cliente removido com sucesso!");
+    setCustomers(updated);
+    deleteAdminCustomerFromFirestore(id)
+      .then(() => toast.success("Cliente removido do Firestore com sucesso!"))
+      .catch(() => toast.error("Erro ao remover cliente do Firestore."));
   };
 
   // Filter
@@ -231,8 +235,14 @@ export function CustomersList({ onSelectCustomer }: CustomersListProps) {
           } else {
             updatedList = [updated, ...customers];
           }
-          saveCustomers(updatedList);
+          setCustomers(updatedList);
           setViewingCustomer(updated);
+          saveAdminCustomerToFirestore(updated)
+            .then(() => toast.success("Cliente salvo no Firestore com sucesso!"))
+            .catch((err) => {
+              console.error("Erro ao atualizar cliente no Firestore:", err);
+              toast.error("Erro ao atualizar cliente no Firestore.");
+            });
         }}
         onDelete={(id) => {
           handleDeleteCustomer(id);
@@ -247,7 +257,13 @@ export function CustomersList({ onSelectCustomer }: CustomersListProps) {
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Top Header matching Nuvemshop screenshot */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Clientes</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Clientes</h1>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+              <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+              Firestore Ativo
+            </span>
+          </div>
 
           <div className="flex items-center gap-2.5">
             {/* Mais opções dropdown containing Exportar e Importar */}

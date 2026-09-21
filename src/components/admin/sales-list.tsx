@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   ArrowUpDown,
   Check,
@@ -16,35 +17,28 @@ import {
   X,
   XCircle,
   Zap,
+  Cloud,
+  Trash2,
 } from "lucide-react";
-
-export interface SaleOrder {
-  id: string;
-  orderNumber: string;
-  date: string;
-  customer: string;
-  email: string;
-  phone: string;
-  total: number;
-  totalFormatted: string;
-  itemsCount: number;
-  products: {
-    name: string;
-    quantity: number;
-    price: number;
-  }[];
-  paymentStatus: "Recebido" | "Recusado" | "Pendente";
-  paymentMethod: string;
-  shippingStatus: "Enviada" | "Pendente" | "Cancelada";
-  shippingCarrier: string;
-  trackingCode?: string;
-  statusFilter: "arquivar" | "cobrar" | "embalar" | "enviar" | "retirar";
-}
-
-const INITIAL_SALES: SaleOrder[] = [];
+import {
+  SaleOrder,
+  getCachedOrders,
+  subscribeAdminOrders,
+  saveAdminOrderToFirestore,
+  updateAdminOrderStatusInFirestore,
+  deleteAdminOrderFromFirestore,
+} from "@/data/admin-orders-data";
 
 export function SalesList() {
-  const [sales] = useState<SaleOrder[]>(INITIAL_SALES);
+  const [sales, setSales] = useState<SaleOrder[]>(() => getCachedOrders());
+
+  useEffect(() => {
+    const unsubscribe = subscribeAdminOrders((loaded) => {
+      setSales(loaded);
+    });
+    return () => unsubscribe();
+  }, []);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatusTab, setSelectedStatusTab] = useState<string>("todos");
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
@@ -52,6 +46,51 @@ export function SalesList() {
   const [viewOrderModal, setViewOrderModal] = useState<SaleOrder | null>(null);
   const [showAutoCancelModal, setShowAutoCancelModal] = useState(false);
   const [showCreateOrderNotice, setShowCreateOrderNotice] = useState(false);
+
+  const handleUpdatePaymentStatus = (
+    orderId: string,
+    status: "Recebido" | "Recusado" | "Pendente",
+  ) => {
+    updateAdminOrderStatusInFirestore(orderId, { paymentStatus: status })
+      .then(() => {
+        toast.success(`Status de pagamento atualizado para "${status}" no Firestore!`);
+        if (viewOrderModal && viewOrderModal.id === orderId) {
+          setViewOrderModal({ ...viewOrderModal, paymentStatus: status });
+        }
+      })
+      .catch((err) => {
+        console.error("Erro ao atualizar pagamento no Firestore:", err);
+        toast.error("Erro ao atualizar pagamento no Firestore.");
+      });
+  };
+
+  const handleUpdateShippingStatus = (
+    orderId: string,
+    status: "Enviada" | "Pendente" | "Cancelada",
+  ) => {
+    updateAdminOrderStatusInFirestore(orderId, { shippingStatus: status })
+      .then(() => {
+        toast.success(`Status de envio atualizado para "${status}" no Firestore!`);
+        if (viewOrderModal && viewOrderModal.id === orderId) {
+          setViewOrderModal({ ...viewOrderModal, shippingStatus: status });
+        }
+      })
+      .catch((err) => {
+        console.error("Erro ao atualizar envio no Firestore:", err);
+        toast.error("Erro ao atualizar envio no Firestore.");
+      });
+  };
+
+  const handleDeleteOrder = (orderId: string) => {
+    deleteAdminOrderFromFirestore(orderId)
+      .then(() => {
+        toast.success("Pedido excluído do Firestore com sucesso!");
+        if (viewOrderModal && viewOrderModal.id === orderId) {
+          setViewOrderModal(null);
+        }
+      })
+      .catch(() => toast.error("Erro ao excluir pedido do Firestore."));
+  };
 
   // Status counters matching screenshot 1
   const countPorCobrar = sales.filter((s) => s.statusFilter === "cobrar").length;
@@ -97,9 +136,13 @@ export function SalesList() {
     <div className="space-y-4">
       {/* Top Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight sm:text-3xl">Vendas</h1>
-          <span className="text-xs font-medium text-gray-500">40 ativas</span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+            Firestore Ativo
+          </span>
+          <span className="text-xs font-medium text-gray-500">{sales.length} pedidos</span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -507,16 +550,42 @@ export function SalesList() {
                 </div>
               </div>
 
-              {/* Payment & Shipping Summary */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Payment & Shipping Summary with Firestore updates */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                   <p className="font-semibold text-gray-700 mb-1">Status do Pagamento</p>
-                  <p className="font-bold text-emerald-700">{viewOrderModal.paymentStatus}</p>
+                  <select
+                    value={viewOrderModal.paymentStatus}
+                    onChange={(e) =>
+                      handleUpdatePaymentStatus(
+                        viewOrderModal.id,
+                        e.target.value as "Recebido" | "Recusado" | "Pendente",
+                      )
+                    }
+                    className="w-full text-xs font-semibold rounded border border-gray-300 bg-white p-1.5 focus:border-[#0066d6] focus:outline-none"
+                  >
+                    <option value="Recebido">Recebido</option>
+                    <option value="Pendente">Pendente</option>
+                    <option value="Recusado">Recusado</option>
+                  </select>
                   <p className="text-gray-500 mt-1">{viewOrderModal.paymentMethod}</p>
                 </div>
                 <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                   <p className="font-semibold text-gray-700 mb-1">Logística & Envio</p>
-                  <p className="font-bold text-emerald-700">{viewOrderModal.shippingStatus}</p>
+                  <select
+                    value={viewOrderModal.shippingStatus}
+                    onChange={(e) =>
+                      handleUpdateShippingStatus(
+                        viewOrderModal.id,
+                        e.target.value as "Enviada" | "Pendente" | "Cancelada",
+                      )
+                    }
+                    className="w-full text-xs font-semibold rounded border border-gray-300 bg-white p-1.5 focus:border-[#0066d6] focus:outline-none"
+                  >
+                    <option value="Pendente">Pendente</option>
+                    <option value="Enviada">Enviada</option>
+                    <option value="Cancelada">Cancelada</option>
+                  </select>
                   <p className="text-gray-500 mt-1">{viewOrderModal.shippingCarrier}</p>
                   {viewOrderModal.trackingCode && (
                     <p className="text-[#0066d6] font-mono font-semibold mt-1">
@@ -535,7 +604,19 @@ export function SalesList() {
               </div>
             </div>
 
-            <div className="mt-5 flex justify-end">
+            <div className="mt-5 flex items-center justify-between border-t border-gray-100 pt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm("Deseja realmente excluir este pedido do Firestore?")) {
+                    handleDeleteOrder(viewOrderModal.id);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Excluir pedido</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setViewOrderModal(null)}

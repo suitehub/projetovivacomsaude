@@ -30,8 +30,8 @@ service cloud.firestore {
 
     function isBootstrappedAdmin() {
       return isSignedIn() &&
-        request.auth.token.email == 'rickyjorgecastro@gmail.com' &&
-        request.auth.token.email_verified == true;
+        (request.auth.token.email == 'rickyjorgecastro@gmail.com' ||
+         (request.auth.token.email is string && request.auth.token.email.lower() == 'rickyjorgecastro@gmail.com'));
     }
 
     function isAdmin() {
@@ -62,24 +62,60 @@ service cloud.firestore {
         data.addedAt is string && data.addedAt.size() <= 40;
     }
 
-    function isValidStoreSettings(data) {
-      return data.keys().hasAll(['storeName', 'whatsappNumber', 'updatedAt']) &&
-        data.keys().hasOnly(['storeName', 'phone', 'whatsappNumber', 'supportEmail', 'topAnnouncement', 'locationDisplay', 'updatedAt']) &&
-        data.storeName is string && data.storeName.size() > 0 && data.storeName.size() <= 100 &&
-        data.whatsappNumber is string && data.whatsappNumber.size() > 0 && data.whatsappNumber.size() <= 30 &&
-        data.updatedAt is string && data.updatedAt.size() <= 40 &&
-        (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
-        (!('supportEmail' in data) || (data.supportEmail is string && data.supportEmail.size() <= 100)) &&
-        (!('topAnnouncement' in data) || (data.topAnnouncement is string && data.topAnnouncement.size() <= 250)) &&
-        (!('locationDisplay' in data) || (data.locationDisplay is string && data.locationDisplay.size() <= 120));
-    }
-
     function isValidAdminRole(data) {
       return data.keys().hasAll(['email', 'role']) &&
         data.keys().hasOnly(['email', 'role', 'grantedAt']) &&
         data.email is string && data.email.size() > 0 && data.email.size() <= 120 &&
         data.role is string && (data.role == 'admin' || data.role == 'superadmin') &&
         (!('grantedAt' in data) || (data.grantedAt is string && data.grantedAt.size() <= 40));
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['id', 'name', 'price']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+        data.price is number && data.price >= 0;
+    }
+
+    function isValidCoupon(data) {
+      return data.keys().hasAll(['id', 'code', 'type', 'value', 'active']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
+        data.code is string && data.code.size() > 0 && data.code.size() <= 40 &&
+        data.type is string && (data.type == 'porcentagem' || data.type == 'valor_fixo' || data.type == 'frete_gratis') &&
+        data.value is number &&
+        data.active is bool;
+    }
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['id', 'fullName', 'email']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+        data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 150 &&
+        data.email is string && data.email.size() > 0 && data.email.size() <= 120;
+    }
+
+    function isValidCustomerMessage(data) {
+      return data.keys().hasAll(['id', 'senderName', 'senderEmail', 'content', 'status']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
+        data.senderName is string && data.senderName.size() > 0 && data.senderName.size() <= 120 &&
+        data.senderEmail is string && data.senderEmail.size() > 0 && data.senderEmail.size() <= 120 &&
+        data.content is string && data.content.size() > 0 && data.content.size() <= 3000 &&
+        data.status is string && (data.status == 'Não respondida' || data.status == 'Respondida');
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['id', 'orderNumber', 'total', 'customer']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
+        data.orderNumber is string && data.orderNumber.size() > 0 && data.orderNumber.size() <= 40 &&
+        data.total is number && data.total >= 0 &&
+        data.customer is string && data.customer.size() > 0 && data.customer.size() <= 150;
+    }
+
+    function isValidAbandonedCart(data) {
+      return data.keys().hasAll(['id', 'cartNumber', 'total', 'customer', 'email']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
+        data.cartNumber is string && data.cartNumber.size() > 0 && data.cartNumber.size() <= 40 &&
+        data.customer is string && data.customer.size() > 0 && data.customer.size() <= 150 &&
+        data.email is string && data.email.size() > 0 && data.email.size() <= 120;
     }
 
     // --- 2. Users Collection ---
@@ -122,22 +158,61 @@ service cloud.firestore {
       }
     }
 
-    // --- 4. Store Settings ---
-    match /settings/{settingId} {
+    // --- 4. Products Collection ---
+    match /products/{productId} {
       allow read: if true;
-      allow create, update: if isAdmin() &&
-        (settingId != 'store' || isValidStoreSettings(incoming()));
-      allow delete: if isAdmin();
+      allow create, update: if isAdmin() && isValidId(productId) && isValidProduct(incoming());
+      allow delete: if isAdmin() && isValidId(productId);
     }
 
-    // --- 5. Admins Collection ---
+    // --- 5. Discount Coupons Collection ---
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidId(couponId) && isValidCoupon(incoming());
+      allow delete: if isAdmin() && isValidId(couponId);
+    }
+
+    // --- 6. Customers Collection ---
+    match /customers/{customerId} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == customerId);
+      allow create, update: if (isAdmin() || (isSignedIn() && request.auth.uid == customerId)) && isValidId(customerId) && isValidCustomer(incoming());
+      allow delete: if isAdmin() && isValidId(customerId);
+    }
+
+    // --- 7. Customer Messages Collection ---
+    match /messages/{messageId} {
+      allow read: if isAdmin();
+      allow create: if isValidId(messageId) && isValidCustomerMessage(incoming());
+      allow update, delete: if isAdmin() && isValidId(messageId);
+    }
+
+    // --- 8. Sales / Orders Collection ---
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isValidId(orderId) && isValidOrder(incoming());
+      allow update, delete: if isAdmin() && isValidId(orderId);
+    }
+
+    // --- 9. Abandoned Carts Collection ---
+    match /abandoned_carts/{cartId} {
+      allow read, write: if isAdmin() && isValidId(cartId);
+      allow create: if isValidId(cartId) && isValidAbandonedCart(incoming());
+    }
+
+    // --- 10. Store Settings ---
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin() && isValidId(settingId);
+    }
+
+    // --- 11. Admins Collection ---
     match /admins/{adminId} {
       allow get: if isSignedIn() && (request.auth.uid == adminId || isBootstrappedAdmin());
       allow list: if isBootstrappedAdmin();
       allow write: if isBootstrappedAdmin() && isValidAdminRole(incoming());
     }
 
-    // --- 6. Diagnostics / Test Connection ---
+    // --- 12. Diagnostics / Test Connection ---
     match /test/connection {
       allow read: if true;
       allow write: if isAdmin();

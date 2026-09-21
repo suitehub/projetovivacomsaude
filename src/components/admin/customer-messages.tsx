@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import {
   Check,
@@ -12,33 +12,28 @@ import {
   Send,
   Trash2,
   X,
+  Cloud,
 } from "lucide-react";
-import { CustomerMessageItem, INITIAL_ADMIN_MESSAGES } from "@/data/admin-customers-data";
+import {
+  CustomerMessageItem,
+  getCachedCustomerMessages,
+  subscribeCustomerMessages,
+  saveCustomerMessageToFirestore,
+  updateCustomerMessageReplyInFirestore,
+  deleteCustomerMessageFromFirestore,
+} from "@/data/admin-customers-data";
 
 export function CustomerMessages() {
-  const [messages, setMessages] = useState<CustomerMessageItem[]>(() => {
-    try {
-      const saved = localStorage.getItem("viva_admin_customer_messages");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          if (
-            parsed.some(
-              (m: CustomerMessageItem) =>
-                m.senderEmail === "mariana.silva@email.com" || m.id === "msg-1",
-            )
-          ) {
-            localStorage.setItem("viva_admin_customer_messages", JSON.stringify([]));
-            return [];
-          }
-          return parsed;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return INITIAL_ADMIN_MESSAGES;
-  });
+  const [messages, setMessages] = useState<CustomerMessageItem[]>(() =>
+    getCachedCustomerMessages(),
+  );
+
+  useEffect(() => {
+    const unsubscribe = subscribeCustomerMessages((loaded) => {
+      setMessages(loaded);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const [selectedMessage, setSelectedMessage] = useState<CustomerMessageItem | null>(null);
   const [replyText, setReplyText] = useState("");
@@ -48,11 +43,6 @@ export function CustomerMessages() {
 
   const saveMessages = (updated: CustomerMessageItem[]) => {
     setMessages(updated);
-    try {
-      localStorage.setItem("viva_admin_customer_messages", JSON.stringify(updated));
-    } catch {
-      // ignore
-    }
   };
 
   const handleToggleSelectAll = () => {
@@ -75,70 +65,98 @@ export function CustomerMessages() {
 
   const confirmDeleteSelected = () => {
     const count = selectedIds.length;
+    const idsToDelete = [...selectedIds];
     const updated = messages.filter((m) => !selectedIds.includes(m.id));
-    saveMessages(updated);
+    setMessages(updated);
     setSelectedIds([]);
     setShowDeleteModal(false);
-    toast.success(`${count} mensagem(ns) excluída(s) com sucesso!`);
+
+    Promise.all(idsToDelete.map((id) => deleteCustomerMessageFromFirestore(id)))
+      .then(() => toast.success(`${count} mensagem(ns) excluída(s) do Firestore!`))
+      .catch(() => toast.error("Erro ao excluir mensagens do Firestore."));
   };
 
   const handleSendReply = () => {
     if (!selectedMessage || !replyText.trim()) return;
 
+    const messageId = selectedMessage.id;
+    const text = replyText;
+
     const updated = messages.map((m) => {
-      if (m.id === selectedMessage.id) {
+      if (m.id === messageId) {
         return {
           ...m,
           status: "Respondida" as const,
-          replyContent: replyText,
+          replyContent: text,
           replyDate: new Date().toLocaleDateString("pt-BR"),
         };
       }
       return m;
     });
 
-    saveMessages(updated);
+    setMessages(updated);
     setSelectedMessage({
       ...selectedMessage,
       status: "Respondida",
-      replyContent: replyText,
+      replyContent: text,
       replyDate: new Date().toLocaleDateString("pt-BR"),
     });
     setReplyText("");
+
+    updateCustomerMessageReplyInFirestore(messageId, text)
+      .then(() => toast.success("Resposta enviada e salva no Firestore!"))
+      .catch((err) => {
+        console.error("Erro ao salvar resposta no Firestore:", err);
+        toast.error("Erro ao salvar resposta no Firestore.");
+      });
   };
 
   const handleToggleStatus = (id: string) => {
-    const updated = messages.map((m) => {
-      if (m.id === id) {
-        const nextStatus: "Não respondida" | "Respondida" =
-          m.status === "Não respondida" ? "Respondida" : "Não respondida";
-        return { ...m, status: nextStatus };
-      }
-      return m;
-    });
-    saveMessages(updated);
+    const target = messages.find((m) => m.id === id);
+    if (!target) return;
+    const nextStatus: "Não respondida" | "Respondida" =
+      target.status === "Não respondida" ? "Respondida" : "Não respondida";
+    const updatedMessage = { ...target, status: nextStatus };
+
+    const updated = messages.map((m) => (m.id === id ? updatedMessage : m));
+    setMessages(updated);
     setActiveMenuId(null);
+
+    saveCustomerMessageToFirestore(updatedMessage).catch((err) => {
+      console.error("Erro ao alternar status da mensagem no Firestore:", err);
+    });
   };
 
   const handleDeleteSingle = (id: string) => {
     const updated = messages.filter((m) => m.id !== id);
-    saveMessages(updated);
+    setMessages(updated);
     if (selectedMessage?.id === id) {
       setSelectedMessage(null);
     }
     setActiveMenuId(null);
+    deleteCustomerMessageFromFirestore(id)
+      .then(() => toast.success("Mensagem excluída do Firestore com sucesso!"))
+      .catch(() => toast.error("Erro ao excluir mensagem do Firestore."));
   };
 
   return (
     <div className="min-h-screen bg-[#f7f9fa] pb-16 font-sans">
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Header matching screenshot 3 */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Mensagens</h1>
-          <p className="mt-1 text-xs text-gray-600">
-            Seus clientes sempre por perto! Confira suas mensagens, consultas e notificações feitas
-            por eles.
-          </p>
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Mensagens</h1>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+                <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+                Firestore Ativo
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-gray-600">
+              Seus clientes sempre por perto! Confira suas mensagens, consultas e notificações
+              feitas por eles.
+            </p>
+          </div>
         </div>
 
         {/* Selected count action bar */}
