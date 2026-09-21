@@ -19,12 +19,20 @@ import {
   ShoppingBag,
   Heart,
   ArrowRight,
+  KeyRound,
 } from "lucide-react";
 
 import { SiteFooter, SiteHeader, TopBar, WhatsAppFab } from "@/components/site-chrome";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { formatPhoneNumber } from "@/components/auth/edit-profile-modal";
 import { FavoritesSheet } from "@/components/products/favorites-sheet";
 import { useFavorites } from "@/data/favorites";
@@ -35,6 +43,7 @@ import {
   updateUserProfile,
   logoutUser,
   loginWithGoogle,
+  resetPassword,
 } from "@/data/user-auth";
 import { toast } from "sonner";
 
@@ -142,7 +151,39 @@ function AccountPage() {
     }
   }, [user, isEditingProfile]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Forgot password state
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [isSendingForgot, setIsSendingForgot] = useState(false);
+  const [forgotSuccessMsg, setForgotSuccessMsg] = useState("");
+  const [forgotErrorMsg, setForgotErrorMsg] = useState("");
+
+  const handleSendForgotEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotErrorMsg("");
+    setForgotSuccessMsg("");
+
+    if (!forgotEmail.trim() || !forgotEmail.includes("@")) {
+      setForgotErrorMsg("Informe um e-mail válido para receber o link.");
+      return;
+    }
+
+    setIsSendingForgot(true);
+    try {
+      const res = await resetPassword(forgotEmail);
+      if (!res.success) {
+        setForgotErrorMsg(res.error || "Não foi possível enviar o link de redefinição.");
+        return;
+      }
+      setForgotSuccessMsg(
+        "Enviamos um link de redefinição para o seu e-mail. Verifique sua caixa de entrada e a pasta de spam.",
+      );
+    } finally {
+      setIsSendingForgot(false);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
 
@@ -156,19 +197,21 @@ function AccountPage() {
     }
 
     setIsLoggingIn(true);
-    const result = loginUser(loginEmail, loginPassword);
-    setIsLoggingIn(false);
+    try {
+      const result = await loginUser(loginEmail, loginPassword);
+      if (!result.success) {
+        setLoginError(result.error || "Erro ao entrar.");
+        return;
+      }
 
-    if (!result.success) {
-      setLoginError(result.error || "Erro ao entrar.");
-      return;
+      toast.success(`Bem-vindo(a) de volta, ${result.user?.fullName.split(" ")[0]}!`);
+      setActiveTab("perfil");
+    } finally {
+      setIsLoggingIn(false);
     }
-
-    toast.success(`Bem-vindo(a) de volta, ${result.user?.fullName.split(" ")[0]}!`);
-    setActiveTab("perfil");
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError("");
 
@@ -194,24 +237,27 @@ function AccountPage() {
     }
 
     setIsRegistering(true);
-    const result = registerUser({
-      fullName: regFullName,
-      email: regEmail,
-      phone: regPhone,
-      password: regPassword,
-    });
-    setIsRegistering(false);
+    try {
+      const result = await registerUser({
+        fullName: regFullName,
+        email: regEmail,
+        phone: regPhone,
+        password: regPassword,
+      });
 
-    if (!result.success) {
-      setRegError(result.error || "Erro ao criar conta.");
-      return;
+      if (!result.success) {
+        setRegError(result.error || "Erro ao criar conta.");
+        return;
+      }
+
+      toast.success("Conta criada com sucesso! Bem-vindo(a) ao Projeto Viva com Saúde.");
+      setActiveTab("perfil");
+    } finally {
+      setIsRegistering(false);
     }
-
-    toast.success("Conta criada com sucesso! Bem-vindo(a) ao Projeto Viva com Saúde.");
-    setActiveTab("perfil");
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     setEditError("");
@@ -241,25 +287,27 @@ function AccountPage() {
     }
 
     setIsSavingEdit(true);
-    const updates: Record<string, string> = {
-      fullName: editFullName.trim(),
-      email: editEmail.trim().toLowerCase(),
-      phone: editPhone.trim(),
-    };
-    if (editNewPassword) {
-      updates.password = editNewPassword;
+    try {
+      const updates: Record<string, string> = {
+        fullName: editFullName.trim(),
+        email: editEmail.trim().toLowerCase(),
+        phone: editPhone.trim(),
+      };
+      if (editNewPassword) {
+        updates.password = editNewPassword;
+      }
+
+      const res = await updateUserProfile(user.id, updates);
+      if (!res.success) {
+        setEditError(res.error || "Erro ao salvar.");
+        return;
+      }
+
+      toast.success("Dados cadastrais atualizados com sucesso!");
+      setIsEditingProfile(false);
+    } finally {
+      setIsSavingEdit(false);
     }
-
-    const res = updateUserProfile(user.id, updates);
-    setIsSavingEdit(false);
-
-    if (!res.success) {
-      setEditError(res.error || "Erro ao salvar.");
-      return;
-    }
-
-    toast.success("Dados cadastrais atualizados com sucesso!");
-    setIsEditingProfile(false);
   };
 
   const handleLogout = () => {
@@ -704,11 +752,12 @@ function AccountPage() {
                           </Label>
                           <button
                             type="button"
-                            onClick={() =>
-                              toast.info(
-                                "Para recuperar sua senha, entre em contato via WhatsApp de suporte.",
-                              )
-                            }
+                            onClick={() => {
+                              setForgotEmail(loginEmail.trim());
+                              setForgotErrorMsg("");
+                              setForgotSuccessMsg("");
+                              setIsForgotModalOpen(true);
+                            }}
                             className="text-[11px] font-medium text-primary hover:underline"
                           >
                             Esqueci a senha
@@ -1011,6 +1060,83 @@ function AccountPage() {
 
       <SiteFooter />
       <WhatsAppFab />
+
+      {/* Modal de Recuperação de Senha com Firebase Authentication */}
+      <Dialog open={isForgotModalOpen} onOpenChange={setIsForgotModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg font-bold text-gray-900">
+              <KeyRound className="h-5 w-5 text-primary" />
+              Recuperar Senha de Acesso
+            </DialogTitle>
+            <DialogDescription className="text-xs text-gray-500">
+              Informe seu e-mail cadastrado. Enviaremos as instruções do Firebase Authentication
+              para você redefinir sua senha com segurança.
+            </DialogDescription>
+          </DialogHeader>
+
+          {forgotSuccessMsg ? (
+            <div className="py-4 space-y-4 text-center">
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 font-medium leading-relaxed">
+                {forgotSuccessMsg}
+              </div>
+              <Button
+                type="button"
+                className="w-full bg-primary hover:bg-primary/90 text-white"
+                onClick={() => setIsForgotModalOpen(false)}
+              >
+                Concluir
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleSendForgotEmail} className="space-y-4 py-2">
+              {forgotErrorMsg && (
+                <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-medium">
+                  {forgotErrorMsg}
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="forgot-email" className="text-xs font-semibold text-gray-700">
+                  E-mail cadastrado
+                </Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="forgot-email"
+                    type="email"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="seuemail@exemplo.com"
+                    className="pl-9 h-11 text-sm"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setIsForgotModalOpen(false)}
+                  disabled={isSendingForgot}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1 bg-primary hover:bg-primary/90 text-white"
+                  disabled={isSendingForgot}
+                >
+                  {isSendingForgot ? "Enviando..." : "Enviar link"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <FavoritesSheet open={favoritesSheetOpen} onOpenChange={setFavoritesSheetOpen} />
     </div>
   );

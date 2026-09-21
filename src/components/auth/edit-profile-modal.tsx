@@ -52,7 +52,7 @@ export function EditProfileModal({ open, onOpenChange, user }: EditProfileModalP
     setPhone(formatPhoneNumber(e.target.value));
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     setError("");
@@ -82,27 +82,28 @@ export function EditProfileModal({ open, onOpenChange, user }: EditProfileModalP
     }
 
     setIsSubmitting(true);
+    try {
+      const updates: Partial<UserProfile> = {
+        fullName: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+      };
 
-    const updates: Partial<UserProfile> = {
-      fullName: fullName.trim(),
-      email: email.trim().toLowerCase(),
-      phone: phone.trim(),
-    };
+      if (newPassword) {
+        updates.password = newPassword;
+      }
 
-    if (newPassword) {
-      updates.password = newPassword;
+      const res = await updateUserProfile(user.id, updates);
+      if (!res.success) {
+        setError(res.error || "Erro ao salvar alterações.");
+        return;
+      }
+
+      toast.success("Dados cadastrais atualizados com sucesso!");
+      onOpenChange(false);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const res = updateUserProfile(user.id, updates);
-    setIsSubmitting(false);
-
-    if (!res.success) {
-      setError(res.error || "Erro ao salvar alterações.");
-      return;
-    }
-
-    toast.success("Dados cadastrais atualizados com sucesso!");
-    onOpenChange(false);
   };
 
   return (
