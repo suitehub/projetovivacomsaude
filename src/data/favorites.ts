@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import { collection, doc, getDocs, setDoc, deleteDoc } from "firebase/firestore";
+import { db, auth } from "@/lib/firebase";
+import { handleFirestoreError, OperationType } from "@/lib/firebase-errors";
 import { useCurrentUser } from "./user-auth";
 
 const STORAGE_KEY_PREFIX = "pvcs_user_favorites_";
@@ -43,6 +46,55 @@ export function isProductFavorite(
   return list.some((id) => String(id) === String(productId));
 }
 
+export async function syncFavoritesFromFirestore(userId: string): Promise<(number | string)[]> {
+  const path = `users/${userId}/favorites`;
+  try {
+    if (!auth.currentUser || auth.currentUser.uid !== userId) {
+      return getUserFavorites(userId);
+    }
+    const snap = await getDocs(collection(db, "users", userId, "favorites"));
+    const ids = snap.docs.map((d) => d.id);
+    saveUserFavorites(userId, ids);
+    return ids;
+  } catch (err) {
+    try {
+      handleFirestoreError(err, OperationType.LIST, path);
+    } catch {
+      // Return local cache on failure
+    }
+    return getUserFavorites(userId);
+  }
+}
+
+export async function toggleProductFavoriteFirestore(
+  userId: string,
+  productId: number | string,
+  isAdding: boolean,
+): Promise<void> {
+  const strId = String(productId);
+  const path = `users/${userId}/favorites/${strId}`;
+  try {
+    if (auth.currentUser && auth.currentUser.uid === userId) {
+      const docRef = doc(db, "users", userId, "favorites", strId);
+      if (isAdding) {
+        await setDoc(docRef, {
+          productId: strId,
+          userId,
+          addedAt: new Date().toISOString(),
+        });
+      } else {
+        await deleteDoc(docRef);
+      }
+    }
+  } catch (err) {
+    try {
+      handleFirestoreError(err, isAdding ? OperationType.CREATE : OperationType.DELETE, path);
+    } catch {
+      // Resilient local state maintained
+    }
+  }
+}
+
 export function toggleProductFavorite(
   userId: string | null | undefined,
   productId: number | string,
@@ -57,8 +109,10 @@ export function toggleProductFavorite(
 
   if (exists) {
     updated = current.filter((id) => String(id) !== String(productId));
+    toggleProductFavoriteFirestore(userId, productId, false).catch(() => {});
   } else {
     updated = [...current, productId];
+    toggleProductFavoriteFirestore(userId, productId, true).catch(() => {});
   }
 
   saveUserFavorites(userId, updated);
@@ -73,6 +127,7 @@ export function removeProductFavorite(
   const current = getUserFavorites(userId);
   const updated = current.filter((id) => String(id) !== String(productId));
   saveUserFavorites(userId, updated);
+  toggleProductFavoriteFirestore(userId, productId, false).catch(() => {});
   return updated;
 }
 
@@ -88,8 +143,17 @@ export function useFavorites() {
   useEffect(() => {
     setFavorites(getUserFavorites(userId));
 
+    if (userId) {
+      syncFavoritesFromFirestore(userId).then((items) => {
+        if (items) setFavorites(items);
+      });
+    }
+
     const handleFavoritesChange = (e: Event) => {
-      const customEvent = e as CustomEvent<{ userId: string; favorites: (number | string)[] }>;
+      const customEvent = e as CustomEvent<{
+        userId: string;
+        favorites: (number | string)[];
+      }>;
       if (!customEvent.detail || customEvent.detail.userId === userId) {
         setFavorites(getUserFavorites(userId));
       }

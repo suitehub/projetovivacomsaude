@@ -1,0 +1,186 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Customer account information and profile data",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the user (matches auth UID)",
+          "maxLength": 128
+        },
+        "fullName": {
+          "type": "string",
+          "description": "Full name of the customer",
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "description": "Customer email address",
+          "maxLength": 120
+        },
+        "phone": {
+          "type": "string",
+          "description": "Customer telephone or WhatsApp number",
+          "maxLength": 30
+        },
+        "city": {
+          "type": "string",
+          "description": "Customer city",
+          "maxLength": 80
+        },
+        "state": {
+          "type": "string",
+          "description": "Customer state or region",
+          "maxLength": 40
+        },
+        "address": {
+          "type": "string",
+          "description": "Delivery address line",
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Account registration ISO timestamp",
+          "maxLength": 40
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last profile update ISO timestamp",
+          "maxLength": 40
+        }
+      },
+      "required": ["id", "fullName", "email", "createdAt"]
+    },
+    "UserFavorite": {
+      "title": "User Favorite Product",
+      "description": "Favorite item registered by an authenticated user",
+      "type": "object",
+      "properties": {
+        "productId": {
+          "type": "string",
+          "description": "Product ID or slug bookmarked by the user",
+          "maxLength": 64
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user ID",
+          "maxLength": 128
+        },
+        "addedAt": {
+          "type": "string",
+          "description": "Timestamp when product was bookmarked",
+          "maxLength": 40
+        }
+      },
+      "required": ["productId", "userId", "addedAt"]
+    },
+    "StoreSettings": {
+      "title": "Store Settings",
+      "description": "Global store settings and contact configuration",
+      "type": "object",
+      "properties": {
+        "storeName": {
+          "type": "string",
+          "description": "Brand name displayed throughout the store",
+          "maxLength": 100
+        },
+        "phone": {
+          "type": "string",
+          "description": "Primary store contact phone",
+          "maxLength": 30
+        },
+        "whatsappNumber": {
+          "type": "string",
+          "description": "WhatsApp customer support phone number",
+          "maxLength": 30
+        },
+        "supportEmail": {
+          "type": "string",
+          "description": "Support and customer service email",
+          "maxLength": 100
+        },
+        "topAnnouncement": {
+          "type": "string",
+          "description": "Header promotion or announcement banner message",
+          "maxLength": 250
+        },
+        "locationDisplay": {
+          "type": "string",
+          "description": "City and physical presence summary",
+          "maxLength": 120
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp of latest settings modification",
+          "maxLength": 40
+        }
+      },
+      "required": ["storeName", "whatsappNumber", "updatedAt"]
+    },
+    "AdminRole": {
+      "title": "Admin Role",
+      "description": "Authorization record granting administrative panel rights",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "Email address of the administrator",
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "description": "Level of administrative privilege",
+          "enum": ["admin", "superadmin"]
+        },
+        "grantedAt": {
+          "type": "string",
+          "description": "Timestamp when admin access was granted",
+          "maxLength": 40
+        }
+      },
+      "required": ["email", "role"]
+    },
+    "ConnectionTest": {
+      "title": "Connection Test",
+      "description": "Diagnostic document used to verify Firestore connectivity",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "Status message",
+          "maxLength": 30
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "Diagnostic verification timestamp",
+          "maxLength": 40
+        }
+      },
+      "required": ["status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores user profiles restricted to the owner or admins"
+    },
+    "/users/{userId}/favorites/{productId}": {
+      "schema": "UserFavorite",
+      "description": "Stores bookmarked favorite products owned by the specific user"
+    },
+    "/settings/store": {
+      "schema": "StoreSettings",
+      "description": "Global store settings read by all customers, writable by admins"
+    },
+    "/admins/{adminId}": {
+      "schema": "AdminRole",
+      "description": "Administrative authority mapping"
+    },
+    "/test/connection": {
+      "schema": "ConnectionTest",
+      "description": "Health check connection diagnostic path"
+    }
+  }
+}

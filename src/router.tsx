@@ -7,10 +7,7 @@ function getBasepath(): string {
     // Se estiver hospedado no GitHub Pages (ex: suitehub.github.io/projetovivacomsaude/)
     if (window.location.hostname.endsWith("github.io")) {
       const segments = window.location.pathname.split("/").filter(Boolean);
-      if (
-        segments.length > 0 &&
-        !["admin", "produtos", "conta", "produto"].includes(segments[0])
-      ) {
+      if (segments.length > 0 && !["admin", "produtos", "conta", "produto"].includes(segments[0])) {
         return `/${segments[0]}`;
       }
     }

@@ -1,0 +1,146 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() &&
+        request.auth.token.email == 'rickyjorgecastro@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() ||
+        (isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // Validation Helpers
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['id', 'fullName', 'email', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'fullName', 'email', 'phone', 'city', 'state', 'address', 'createdAt', 'updatedAt']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+        data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 120 &&
+        data.email is string && data.email.size() > 0 && data.email.size() <= 120 &&
+        data.createdAt is string && data.createdAt.size() <= 40 &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+        (!('city' in data) || (data.city is string && data.city.size() <= 80)) &&
+        (!('state' in data) || (data.state is string && data.state.size() <= 40)) &&
+        (!('address' in data) || (data.address is string && data.address.size() <= 200)) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 40));
+    }
+
+    function isValidUserFavorite(data) {
+      return data.keys().hasAll(['productId', 'userId', 'addedAt']) &&
+        data.keys().hasOnly(['productId', 'userId', 'addedAt']) &&
+        data.productId is string && data.productId.size() > 0 && data.productId.size() <= 64 &&
+        data.userId is string && data.userId.size() > 0 && data.userId.size() <= 128 &&
+        data.addedAt is string && data.addedAt.size() <= 40;
+    }
+
+    function isValidStoreSettings(data) {
+      return data.keys().hasAll(['storeName', 'whatsappNumber', 'updatedAt']) &&
+        data.keys().hasOnly(['storeName', 'phone', 'whatsappNumber', 'supportEmail', 'topAnnouncement', 'locationDisplay', 'updatedAt']) &&
+        data.storeName is string && data.storeName.size() > 0 && data.storeName.size() <= 100 &&
+        data.whatsappNumber is string && data.whatsappNumber.size() > 0 && data.whatsappNumber.size() <= 30 &&
+        data.updatedAt is string && data.updatedAt.size() <= 40 &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+        (!('supportEmail' in data) || (data.supportEmail is string && data.supportEmail.size() <= 100)) &&
+        (!('topAnnouncement' in data) || (data.topAnnouncement is string && data.topAnnouncement.size() <= 250)) &&
+        (!('locationDisplay' in data) || (data.locationDisplay is string && data.locationDisplay.size() <= 120));
+    }
+
+    function isValidAdminRole(data) {
+      return data.keys().hasAll(['email', 'role']) &&
+        data.keys().hasOnly(['email', 'role', 'grantedAt']) &&
+        data.email is string && data.email.size() > 0 && data.email.size() <= 120 &&
+        data.role is string && (data.role == 'admin' || data.role == 'superadmin') &&
+        (!('grantedAt' in data) || (data.grantedAt is string && data.grantedAt.size() <= 40));
+    }
+
+    // --- 2. Users Collection ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isValidId(userId) &&
+        isOwner(userId) &&
+        incoming().id == userId &&
+        isValidUserProfile(incoming());
+
+      allow update: if isValidId(userId) &&
+        isValidUserProfile(incoming()) &&
+        (
+          isAdmin() ||
+          (
+            isOwner(userId) &&
+            incoming().id == existing().id &&
+            incoming().createdAt == existing().createdAt &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'email', 'phone', 'city', 'state', 'address', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
+
+      // --- 3. User Favorites Subcollection (Master Gate) ---
+      match /favorites/{productId} {
+        allow get, list: if isOwner(userId);
+
+        allow create: if isValidId(productId) &&
+          isOwner(userId) &&
+          incoming().userId == userId &&
+          incoming().productId == productId &&
+          isValidUserFavorite(incoming());
+
+        allow update: if false; // Favorites are atomic bookmarks: add or remove
+
+        allow delete: if isValidId(productId) && isOwner(userId);
+      }
+    }
+
+    // --- 4. Store Settings ---
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create, update: if isAdmin() &&
+        (settingId != 'store' || isValidStoreSettings(incoming()));
+      allow delete: if isAdmin();
+    }
+
+    // --- 5. Admins Collection ---
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && (request.auth.uid == adminId || isBootstrappedAdmin());
+      allow list: if isBootstrappedAdmin();
+      allow write: if isBootstrappedAdmin() && isValidAdminRole(incoming());
+    }
+
+    // --- 6. Diagnostics / Test Connection ---
+    match /test/connection {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}

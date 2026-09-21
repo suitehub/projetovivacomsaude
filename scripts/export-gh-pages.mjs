@@ -74,7 +74,10 @@ if (serverModule && serverModule.default && typeof serverModule.default.fetch ==
       let res = await serverModule.default.fetch(new Request(`http://localhost${requestPath}`), {});
       if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
         const redirectLoc = res.headers.get("location");
-        res = await serverModule.default.fetch(new Request(new URL(redirectLoc, "http://localhost").href), {});
+        res = await serverModule.default.fetch(
+          new Request(new URL(redirectLoc, "http://localhost").href),
+          {},
+        );
       }
 
       if (res.status === 200) {
