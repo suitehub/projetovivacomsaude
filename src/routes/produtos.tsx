@@ -22,7 +22,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { formatPrice, Product } from "@/data/products";
-import { getAllStoreProducts } from "@/data/all-store-products";
+import { getAllStoreProducts, useStoreProducts } from "@/data/all-store-products";
 import { ProductFavoriteButton } from "@/components/products/product-favorite-button";
 import { useCurrentUser } from "@/data/user-auth";
 import { toast } from "sonner";
@@ -60,21 +60,8 @@ export function AllProductsPage() {
   const { isLoggedIn } = useCurrentUser();
   const searchParams = Route.useSearch();
 
-  // Load products list from storage or defaults
-  const [allProducts, setAllProducts] = useState<Product[]>(() => getAllStoreProducts());
-
-  useEffect(() => {
-    setAllProducts(getAllStoreProducts());
-    const handleUpdate = () => {
-      setAllProducts(getAllStoreProducts());
-    };
-    window.addEventListener("viva_admin_products_updated", handleUpdate);
-    window.addEventListener("storage", handleUpdate);
-    return () => {
-      window.removeEventListener("viva_admin_products_updated", handleUpdate);
-      window.removeEventListener("storage", handleUpdate);
-    };
-  }, []);
+  // Load products list reactive from Firestore
+  const allProducts = useStoreProducts();
 
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState(searchParams.busca || "");

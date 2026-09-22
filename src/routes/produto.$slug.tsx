@@ -19,13 +19,21 @@ import {
   Tag,
   Star,
   Truck,
+  Sparkles,
+  FlaskConical,
+  Clock,
+  Info,
 } from "lucide-react";
 
 import productsImage from "@/assets/viva-products.jpg";
 import { SiteFooter, SiteHeader, TopBar, WhatsAppFab } from "@/components/site-chrome";
 import { Button } from "@/components/ui/button";
 import { formatPrice, products } from "@/data/products";
-import { findStoreProductBySlug, getAllStoreProducts } from "@/data/all-store-products";
+import {
+  findStoreProductBySlug,
+  fetchStoreProductBySlugFromFirestore,
+  getAllStoreProducts,
+} from "@/data/all-store-products";
 import { useStoreSettings } from "@/hooks/use-store-settings";
 import { ProductFavoriteButton } from "@/components/products/product-favorite-button";
 import { useFavorites } from "@/data/favorites";
@@ -34,8 +42,11 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/produto/$slug")({
   ssr: false,
-  loader: ({ params }) => {
-    const product = findStoreProductBySlug(params.slug);
+  loader: async ({ params }) => {
+    let product = findStoreProductBySlug(params.slug);
+    if (!product) {
+      product = await fetchStoreProductBySlugFromFirestore(params.slug);
+    }
     if (!product) throw notFound();
     return { product };
   },
@@ -110,15 +121,23 @@ function ProductPage() {
   }, [initialProduct]);
 
   useEffect(() => {
-    const handleUpdate = () => {
-      const refreshed = findStoreProductBySlug(params.slug);
-      if (refreshed) {
+    let active = true;
+    const handleUpdate = async () => {
+      let refreshed = findStoreProductBySlug(params.slug);
+      if (!refreshed) {
+        refreshed = await fetchStoreProductBySlugFromFirestore(params.slug);
+      }
+      if (active && refreshed) {
         setProduct(refreshed);
       }
     };
+
+    handleUpdate();
+
     window.addEventListener("viva_admin_products_updated", handleUpdate);
     window.addEventListener("storage", handleUpdate);
     return () => {
+      active = false;
       window.removeEventListener("viva_admin_products_updated", handleUpdate);
       window.removeEventListener("storage", handleUpdate);
     };
@@ -404,13 +423,97 @@ function ProductPage() {
                 product.description.map((paragraph, idx) => (
                   <p
                     key={idx}
-                    className="mt-4 max-w-2xl text-sm leading-relaxed text-muted-foreground"
+                    className="mt-4 max-w-2xl text-sm leading-relaxed text-muted-foreground whitespace-pre-line"
                   >
                     {paragraph}
                   </p>
                 ))
               ) : (
                 <p className="mt-4 text-sm text-muted-foreground">Sem descrição detalhada.</p>
+              )}
+
+              {/* Benefícios */}
+              {product.benefits && product.benefits.length > 0 && (
+                <div className="mt-8 border-t border-border pt-6">
+                  <h3 className="flex items-center gap-2 font-display text-lg font-bold text-foreground">
+                    <Sparkles className="h-5 w-5 text-emerald-600" />
+                    Benefícios
+                  </h3>
+                  <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+                    {product.benefits.map((benefit, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-start gap-2.5 rounded-lg border border-border/80 bg-background/50 p-3 text-sm text-foreground"
+                      >
+                        <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                        <span>{benefit}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Composição / Ingredientes */}
+              {product.composition && product.composition.length > 0 && (
+                <div className="mt-8 border-t border-border pt-6">
+                  <h3 className="flex items-center gap-2 font-display text-lg font-bold text-foreground">
+                    <FlaskConical className="h-5 w-5 text-primary" />
+                    Composição e Ingredientes
+                  </h3>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {product.composition.map((item, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center rounded-md border border-border bg-muted/60 px-3 py-1.5 text-xs font-medium text-foreground"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Modo de Uso */}
+              {product.usage && product.usage.length > 0 && (
+                <div className="mt-8 border-t border-border pt-6">
+                  <h3 className="flex items-center gap-2 font-display text-lg font-bold text-foreground">
+                    <Clock className="h-5 w-5 text-blue-600" />
+                    Modo de Uso e Recomendações
+                  </h3>
+                  <div className="mt-4 space-y-2">
+                    {product.usage.map((step, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-start gap-3 rounded-lg border border-border/70 bg-card p-3 text-sm text-muted-foreground"
+                      >
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                          {idx + 1}
+                        </span>
+                        <span className="pt-0.5 leading-relaxed text-foreground">{step}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Abas e seções adicionais configuradas */}
+              {product.customTabs && product.customTabs.length > 0 && (
+                <div className="mt-8 space-y-6 border-t border-border pt-6">
+                  {product.customTabs.map((tab) => (
+                    <div
+                      key={tab.id}
+                      className="rounded-lg border border-border bg-background/40 p-4"
+                    >
+                      <h4 className="flex items-center gap-2 font-display text-base font-bold text-foreground">
+                        <Info className="h-4 w-4 text-primary" />
+                        {tab.title}
+                      </h4>
+                      <div className="mt-2 text-sm leading-relaxed text-muted-foreground whitespace-pre-line">
+                        {tab.content}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
 
               {product.reviews > 0 && (

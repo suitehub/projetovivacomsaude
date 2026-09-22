@@ -1,4 +1,12 @@
-import { AdminProductItem, INITIAL_ADMIN_PRODUCTS } from "./admin-products-data";
+import { useState, useEffect } from "react";
+import { collection, query, onSnapshot, getDocs } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import {
+  AdminProductItem,
+  INITIAL_ADMIN_PRODUCTS,
+  getCachedAdminProducts,
+  cacheAdminProducts,
+} from "./admin-products-data";
 import { Product, products as initialStaticProducts } from "./products";
 
 const bgPositions = ["0%", "20%", "40%", "60%", "80%", "100%"];
@@ -20,26 +28,9 @@ export function slugify(text: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-// Check if an array of admin products contains legacy demo data
-export function purgeLegacyDemoData(): void {
-  if (typeof window === "undefined") return;
-  try {
-    const purgeKey = "viva_admin_reset_empty_v4";
-    if (!localStorage.getItem(purgeKey)) {
-      // Only set initial keys if nothing exists yet
-      if (!localStorage.getItem("viva_admin_products")) {
-        localStorage.setItem("viva_admin_products", JSON.stringify([]));
-      }
-      localStorage.setItem(purgeKey, "true");
-    }
-  } catch {
-    // ignore
-  }
-}
-
-if (typeof window !== "undefined") {
-  purgeLegacyDemoData();
-}
+// In-memory cache for fast synchronous access
+let cachedStoreProducts: Product[] | null = null;
+let isFirestoreSubscribed = false;
 
 export function convertAdminProductToStoreProduct(item: AdminProductItem, index: number): Product {
   const bgPos = getBgPositionForIndex(item.imagePositionIndex ?? index);
@@ -143,18 +134,74 @@ export function convertAdminProductToStoreProduct(item: AdminProductItem, index:
   };
 }
 
+export function initStoreProductsSubscription(): () => void {
+  if (typeof window === "undefined" || isFirestoreSubscribed) {
+    return () => {};
+  }
+  isFirestoreSubscribed = true;
+
+  try {
+    const productsCol = collection(db, "products");
+    const q = query(productsCol);
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const loaded: AdminProductItem[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as AdminProductItem;
+          loaded.push({
+            ...data,
+            id: docSnap.id,
+          });
+        });
+
+        cacheAdminProducts(loaded);
+        const visible = loaded.filter(
+          (p) => p.displayInStore !== false && p.visibility !== "Oculto",
+        );
+        cachedStoreProducts = visible.map((item, idx) =>
+          convertAdminProductToStoreProduct(item, idx),
+        );
+        window.dispatchEvent(new Event("viva_admin_products_updated"));
+      },
+      (err) => {
+        console.warn("Aviso ao sincronizar catálogo do Firestore:", err);
+      },
+    );
+
+    return unsubscribe;
+  } catch (err) {
+    console.warn("Erro ao inicializar subscription da loja:", err);
+    return () => {};
+  }
+}
+
+// Auto-initialize subscription in browser
+if (typeof window !== "undefined") {
+  initStoreProductsSubscription();
+}
+
 export function getAllStoreProducts(): Product[] {
+  if (cachedStoreProducts && cachedStoreProducts.length > 0) {
+    return cachedStoreProducts;
+  }
+
   if (typeof window !== "undefined") {
     try {
       const saved = localStorage.getItem("viva_admin_products");
       if (saved) {
         const parsed: AdminProductItem[] = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed) && parsed.length > 0) {
           // Filter visible
           const visible = parsed.filter(
             (p) => p.displayInStore !== false && p.visibility !== "Oculto",
           );
-          return visible.map((item, idx) => convertAdminProductToStoreProduct(item, idx));
+          const converted = visible.map((item, idx) =>
+            convertAdminProductToStoreProduct(item, idx),
+          );
+          cachedStoreProducts = converted;
+          return converted;
         }
       }
     } catch {
@@ -162,7 +209,7 @@ export function getAllStoreProducts(): Product[] {
     }
   }
 
-  // Fallback to converting INITIAL_ADMIN_PRODUCTS
+  // Fallback to converting INITIAL_ADMIN_PRODUCTS if present
   if (INITIAL_ADMIN_PRODUCTS && INITIAL_ADMIN_PRODUCTS.length > 0) {
     const visible = INITIAL_ADMIN_PRODUCTS.filter(
       (p) => p.displayInStore !== false && p.visibility !== "Oculto",
@@ -171,6 +218,65 @@ export function getAllStoreProducts(): Product[] {
   }
 
   return initialStaticProducts;
+}
+
+/**
+ * React hook that subscribes to store products live from Firestore
+ */
+export function useStoreProducts(): Product[] {
+  const [products, setProducts] = useState<Product[]>(() => getAllStoreProducts());
+
+  useEffect(() => {
+    // Ensure subscription is active
+    initStoreProductsSubscription();
+
+    const handleUpdate = () => {
+      setProducts(getAllStoreProducts());
+    };
+
+    // Update immediately from current cache
+    setProducts(getAllStoreProducts());
+
+    window.addEventListener("viva_admin_products_updated", handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+
+    return () => {
+      window.removeEventListener("viva_admin_products_updated", handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+    };
+  }, []);
+
+  return products;
+}
+
+export async function fetchStoreProductBySlugFromFirestore(
+  slug: string,
+): Promise<Product | undefined> {
+  if (!slug) return undefined;
+  // First check synchronous cache
+  const local = findStoreProductBySlug(slug);
+  if (local) return local;
+
+  // Otherwise query Firestore directly
+  try {
+    const productsCol = collection(db, "products");
+    const snap = await getDocs(productsCol);
+    const loaded: AdminProductItem[] = [];
+    snap.forEach((d) => {
+      loaded.push({ ...(d.data() as AdminProductItem), id: d.id });
+    });
+    if (loaded.length > 0) {
+      cacheAdminProducts(loaded);
+      const visible = loaded.filter((p) => p.displayInStore !== false && p.visibility !== "Oculto");
+      cachedStoreProducts = visible.map((item, idx) =>
+        convertAdminProductToStoreProduct(item, idx),
+      );
+      return findStoreProductBySlug(slug);
+    }
+  } catch (err) {
+    console.warn("Erro ao buscar produto do Firestore:", err);
+  }
+  return findStoreProductBySlug(slug);
 }
 
 export function findStoreProductBySlug(slug: string): Product | undefined {

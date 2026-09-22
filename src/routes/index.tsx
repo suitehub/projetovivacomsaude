@@ -30,7 +30,7 @@ import benefitsImage from "@/assets/viva-benefits.jpg";
 import productsImage from "@/assets/viva-products.jpg";
 import { Button } from "@/components/ui/button";
 import { formatPrice, products } from "@/data/products";
-import { getAllStoreProducts } from "@/data/all-store-products";
+import { getAllStoreProducts, useStoreProducts } from "@/data/all-store-products";
 import { Input } from "@/components/ui/input";
 import { ContactMessageForm } from "@/components/contact-message-form";
 import { UserAccountDropdown } from "@/components/auth/user-account-dropdown";
@@ -116,20 +116,7 @@ function Index() {
   const navigate = useNavigate();
   const { isLoggedIn } = useCurrentUser();
   const settings = useStoreSettings();
-  const [storeProducts, setStoreProducts] = useState(() => getAllStoreProducts());
-
-  useEffect(() => {
-    setStoreProducts(getAllStoreProducts());
-    const handleUpdate = () => {
-      setStoreProducts(getAllStoreProducts());
-    };
-    window.addEventListener("viva_admin_products_updated", handleUpdate);
-    window.addEventListener("storage", handleUpdate);
-    return () => {
-      window.removeEventListener("viva_admin_products_updated", handleUpdate);
-      window.removeEventListener("storage", handleUpdate);
-    };
-  }, []);
+  const storeProducts = useStoreProducts();
 
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Todas");

@@ -163,6 +163,9 @@ export async function saveAdminProductToFirestore(product: AdminProductItem): Pr
     updated = [product, ...current];
   }
   cacheAdminProducts(updated);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("viva_admin_products_updated"));
+  }
 }
 
 /**
@@ -176,6 +179,9 @@ export async function deleteAdminProductFromFirestore(productId: string): Promis
   const current = getCachedAdminProducts();
   const updated = current.filter((p) => p.id !== productId);
   cacheAdminProducts(updated);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("viva_admin_products_updated"));
+  }
 }
 
 /**
@@ -202,4 +208,7 @@ export async function saveAllAdminProductsToFirestore(products: AdminProductItem
   }
 
   cacheAdminProducts(products);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("viva_admin_products_updated"));
+  }
 }

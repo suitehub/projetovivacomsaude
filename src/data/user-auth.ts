@@ -10,9 +10,7 @@ import {
   onAuthStateChanged,
   User as FirebaseUser,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
-import { auth, db, googleProvider } from "@/lib/firebase";
-import { handleFirestoreError, OperationType } from "@/lib/firebase-errors";
+import { auth, googleProvider } from "@/lib/firebase";
 
 export interface UserProfile {
   id: string;
@@ -99,64 +97,34 @@ export function mapFirebaseAuthError(err: unknown): string {
 }
 
 /**
- * Synchronizes user profile to Firestore document /users/{userId}
+ * Helper to build a UserProfile directly from Firebase Auth User
  */
-export async function syncUserProfileToFirestore(profile: UserProfile): Promise<void> {
-  const path = `users/${profile.id}`;
-  try {
-    const userDocRef = doc(db, "users", profile.id);
-    const existingSnap = await getDoc(userDocRef);
+function buildUserProfileFromFirebase(
+  fbUser: FirebaseUser,
+  extra?: Partial<UserProfile>,
+): UserProfile {
+  const current = getCurrentUser();
+  const email = fbUser.email || extra?.email || "";
+  const fallbackName = email.split("@")[0] || "Cliente";
 
-    const dataToSave: Record<string, string> = {
-      id: profile.id,
-      fullName: profile.fullName || "Cliente",
-      email: profile.email,
-      createdAt: profile.createdAt || new Date().toISOString(),
-    };
-    if (profile.phone) dataToSave.phone = profile.phone;
-    if (profile.city) dataToSave.city = profile.city;
-    if (profile.state) dataToSave.state = profile.state;
-    if (profile.address) dataToSave.address = profile.address;
-    dataToSave.updatedAt = new Date().toISOString();
-
-    if (existingSnap.exists()) {
-      await updateDoc(userDocRef, dataToSave);
-    } else {
-      await setDoc(userDocRef, dataToSave);
-    }
-
-    // Also sync to /customers collection so the user appears in the admin panel
-    try {
-      const customerDocRef = doc(db, "customers", profile.id);
-      await setDoc(
-        customerDocRef,
-        {
-          id: profile.id,
-          fullName: profile.fullName || "Cliente",
-          email: profile.email,
-          phone: profile.phone || "",
-          city: profile.city || "São Paulo",
-          state: profile.state || "SP",
-          address: profile.address || "",
-          registered: true,
-          registrationDate: new Date().toLocaleDateString("pt-BR"),
-        },
-        { merge: true },
-      );
-    } catch {
-      // Non-blocking
-    }
-  } catch (error) {
-    try {
-      handleFirestoreError(error, OperationType.WRITE, path);
-    } catch {
-      // Local fallback remains available for resilient UI
-    }
-  }
+  return {
+    id: fbUser.uid,
+    fullName: extra?.fullName || fbUser.displayName || current?.fullName || fallbackName,
+    email: email,
+    phone: extra?.phone || fbUser.phoneNumber || current?.phone || "",
+    createdAt:
+      current?.id === fbUser.uid && current.createdAt
+        ? current.createdAt
+        : new Date().toISOString(),
+    city: extra?.city || (current?.id === fbUser.uid ? current.city : "") || "",
+    state: extra?.state || (current?.id === fbUser.uid ? current.state : "") || "",
+    address: extra?.address || (current?.id === fbUser.uid ? current.address : "") || "",
+    isFirebaseUser: true,
+  };
 }
 
 /**
- * Cadastra novo usuário no Firebase Authentication e salva perfil no Firestore
+ * Cadastra novo usuário exclusivamente no Firebase Authentication
  */
 export async function registerUser(data: {
   fullName: string;
@@ -188,9 +156,7 @@ export async function registerUser(data: {
       isFirebaseUser: true,
     };
 
-    await syncUserProfileToFirestore(newProfile);
     saveCurrentUser(newProfile);
-
     return { success: true, user: newProfile };
   } catch (err: unknown) {
     const errorMsg = mapFirebaseAuthError(err);
@@ -212,44 +178,7 @@ export async function loginUser(
     const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
     const fbUser = cred.user;
 
-    let profile: UserProfile;
-    try {
-      const snap = await getDoc(doc(db, "users", fbUser.uid));
-      if (snap.exists()) {
-        const data = snap.data();
-        profile = {
-          id: fbUser.uid,
-          fullName: data.fullName || fbUser.displayName || normalizedEmail.split("@")[0],
-          email: data.email || fbUser.email || normalizedEmail,
-          phone: data.phone || fbUser.phoneNumber || "",
-          createdAt: data.createdAt || new Date().toISOString(),
-          city: data.city || "",
-          state: data.state || "",
-          address: data.address || "",
-          isFirebaseUser: true,
-        };
-      } else {
-        profile = {
-          id: fbUser.uid,
-          fullName: fbUser.displayName || normalizedEmail.split("@")[0],
-          email: fbUser.email || normalizedEmail,
-          phone: fbUser.phoneNumber || "",
-          createdAt: new Date().toISOString(),
-          isFirebaseUser: true,
-        };
-        await syncUserProfileToFirestore(profile);
-      }
-    } catch {
-      profile = {
-        id: fbUser.uid,
-        fullName: fbUser.displayName || normalizedEmail.split("@")[0],
-        email: fbUser.email || normalizedEmail,
-        phone: fbUser.phoneNumber || "",
-        createdAt: new Date().toISOString(),
-        isFirebaseUser: true,
-      };
-    }
-
+    const profile = buildUserProfileFromFirebase(fbUser, { email: normalizedEmail });
     saveCurrentUser(profile);
     return { success: true, user: profile };
   } catch (err: unknown) {
@@ -271,49 +200,7 @@ export async function loginWithGoogle(): Promise<{
     const result = await signInWithPopup(auth, googleProvider);
     const fbUser: FirebaseUser = result.user;
 
-    const email = fbUser.email || "";
-    const fullName = fbUser.displayName || email.split("@")[0] || "Cliente";
-    const phone = fbUser.phoneNumber || "";
-
-    let profile: UserProfile;
-    const userDocRef = doc(db, "users", fbUser.uid);
-    try {
-      const snap = await getDoc(userDocRef);
-      if (snap.exists()) {
-        const data = snap.data();
-        profile = {
-          id: fbUser.uid,
-          fullName: data.fullName || fullName,
-          email: data.email || email,
-          phone: data.phone || phone,
-          createdAt: data.createdAt || new Date().toISOString(),
-          city: data.city || "",
-          state: data.state || "",
-          address: data.address || "",
-          isFirebaseUser: true,
-        };
-      } else {
-        profile = {
-          id: fbUser.uid,
-          fullName,
-          email,
-          phone,
-          createdAt: new Date().toISOString(),
-          isFirebaseUser: true,
-        };
-        await syncUserProfileToFirestore(profile);
-      }
-    } catch {
-      profile = {
-        id: fbUser.uid,
-        fullName,
-        email,
-        phone,
-        createdAt: new Date().toISOString(),
-        isFirebaseUser: true,
-      };
-    }
-
+    const profile = buildUserProfileFromFirebase(fbUser);
     saveCurrentUser(profile);
     return { success: true, user: profile };
   } catch (err: unknown) {
@@ -369,7 +256,6 @@ export async function updateUserProfile(
   delete updated.password;
 
   saveCurrentUser(updated);
-  await syncUserProfileToFirestore(updated);
   return { success: true, user: updated };
 }
 
@@ -392,47 +278,13 @@ export function useCurrentUser() {
   useEffect(() => {
     setUser(getCurrentUser());
 
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
       setIsLoadingAuth(false);
       if (fbUser) {
-        try {
-          const snap = await getDoc(doc(db, "users", fbUser.uid));
-          if (snap.exists()) {
-            const data = snap.data();
-            const loadedUser: UserProfile = {
-              id: fbUser.uid,
-              fullName: data.fullName || fbUser.displayName || "Cliente",
-              email: data.email || fbUser.email || "",
-              phone: data.phone || fbUser.phoneNumber || "",
-              createdAt: data.createdAt || new Date().toISOString(),
-              city: data.city || "",
-              state: data.state || "",
-              address: data.address || "",
-              isFirebaseUser: true,
-            };
-            saveCurrentUser(loadedUser);
-            setUser(loadedUser);
-            return;
-          } else {
-            // Profile document does not exist yet
-            const defaultUser: UserProfile = {
-              id: fbUser.uid,
-              fullName: fbUser.displayName || fbUser.email?.split("@")[0] || "Cliente",
-              email: fbUser.email || "",
-              phone: fbUser.phoneNumber || "",
-              createdAt: new Date().toISOString(),
-              isFirebaseUser: true,
-            };
-            await syncUserProfileToFirestore(defaultUser);
-            saveCurrentUser(defaultUser);
-            setUser(defaultUser);
-            return;
-          }
-        } catch {
-          // If offline or permission error, maintain local representation
-        }
+        const loadedUser = buildUserProfileFromFirebase(fbUser);
+        saveCurrentUser(loadedUser);
+        setUser(loadedUser);
       } else {
-        // No authenticated Firebase user: clear stored session
         saveCurrentUser(null);
         setUser(null);
       }
